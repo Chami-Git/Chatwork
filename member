@@ -1,0 +1,135 @@
+　// グーグルスプレッドシートへチャットワークのメンバー一覧を取得する（ルーム指定可）
+  // チャットワークAPIトークンを設定　サービス連携＞API　から取得
+var ChatWorkToken = "XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX";
+
+// 設定用スプレッドシートのシート名　※任意
+var SHEETNAME = "シート1";
+
+// ルームIDの指定(空""の場合は全ルーム取得)　数字9ケタ
+// 複数指定する場合は　["", ""];
+var ROOM_ID = "";
+
+//---- 初期設定ここまで -----------
+
+// 最新のルーム一覧を読込む
+function getRooms(){
+
+  // スプレッドシートを読込み
+  var sheet = getSheet();
+  
+  // 自分のchatworkIDを取得
+  var myAccountId = getMyAccountId();
+  
+  // ルーム一覧を読み込み
+  // ChatWork apiに投げるパラメータを設定
+  var params = {
+    headers : {"X-ChatWorkToken" : ChatWorkToken},
+    method : "get"
+  };
+
+  //ルーム一覧を取得するURL
+  var url = "https://api.chatwork.com/v2/rooms";
+
+  //チャットワークAPIエンドポイントからレスポンスを取得
+  var strRespons = UrlFetchApp.fetch(url, params);
+
+  // 中身がなかったら終了　
+  if( strRespons.getContentText() == "" ) return false;
+  
+  // レスポンス文字列をJSON形式として解析しJSONオブジェクトとして返す
+  var json = JSON.parse(strRespons.getContentText());
+
+  // 二次元配列を作成し、シートに貼り付ける
+  // 配列を定義
+  var values = [];
+  // １行目はフィールド名を挿入
+  values[0] = [ "ルームID", "ルーム名", "アカウントID", "名前", "ChatWorkID"];
+  
+  // jsonの内容を2行目以降に追加
+  for(var obj of json){
+    // ROOM_IDが空の場合は全ルームを取得、それ以外の場合はROOM_ID配列に含まれるルームのみを取得
+    // .indexOf（）は（）内で検索したい文字列を指定
+    // 基本は文字列の先頭を0としたインデックス番号が戻り値、配列の場合は要素数
+    // 該当がない場合は-1で返り、!==で-1を否定
+    // .toString()は文字列に変換
+    if(obj.type == "group" && ( ROOM_ID.length == 0 || ROOM_ID.indexOf(obj.room_id.toString()) !== -1 )){
+      var members = getMembers(obj.room_id, obj.name, myAccountId);
+      // ループの先頭に戻る
+      if(!members)continue;
+      // 配列結合
+      values = values.concat(members);
+    }
+  }
+  
+  // スプレッドシートをクリア
+  sheet.clearContents();
+
+  // スプレッドシートに貼付け
+  sheet.getRange(1,1,values.length,values[0].length).setValues( values );
+
+}
+
+function getMyAccountId(){
+  // ChatWork apiに投げるパラメータを設定
+  var params = {
+    headers : {"X-ChatWorkToken" : ChatWorkToken},
+    method : "get"
+  };
+
+  // エンドポイント
+  var url = "https://api.chatwork.com/v2/me";
+
+  //チャットワークAPIエンドポイントからレスポンスを取得
+  var strRespons = UrlFetchApp.fetch(url, params);
+
+  // 中身がなかったら終了
+  if( strRespons.getContentText() == "" ) return false;
+  
+  // レスポンス文字列をJSON形式として解析しJSONオブジェクトとして返す
+  var json = JSON.parse(strRespons.getContentText());
+  
+  return json.account_id;
+}
+
+function getMembers(room_id, room_name, myAccountId){
+    
+  // ルーム一覧を読み込み
+  // ChatWork apiに投げるパラメータを設定
+  var params = {
+    headers : {"X-ChatWorkToken" : ChatWorkToken},
+    method : "get"
+  };
+
+  // エンドポイント
+  var url = "https://api.chatwork.com/v2/rooms/"+room_id+"/members";
+
+  //チャットワークAPIエンドポイントからレスポンスを取得
+  try{
+    var strRespons = UrlFetchApp.fetch(url, params);
+  }catch(e){
+    return false;
+  }
+  // 中身がなかったら終了
+  if( strRespons.getContentText() == "" ) return false;
+  
+  // レスポンス文字列をJSON形式として解析しJSONオブジェクトとして返す
+  var json = JSON.parse(strRespons.getContentText());
+
+  // 配列を定義
+  var values = [];
+  
+  // jsonの内容を追加
+  for(var obj of json){
+    if( obj.account_id != myAccountId ){
+      var line = [ room_id, room_name, obj.account_id, obj.name, obj.chatwork_id ];
+      values.push( line );
+    }
+  }
+  return values;
+}
+
+function getSheet(){
+  var book = SpreadsheetApp.getActiveSpreadsheet();
+  return book.getSheetByName(SHEETNAME);
+}
+
